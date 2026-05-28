@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RelationMapper</title>
+    
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    <style>
+        /* --- PREMIUM COLOR PALETTE & VARIABLES (Light & Dark Mode) --- */
+        :root {
+            --bg-body: #f8fafc;
+            --bg-surface: #ffffff;
+            --bg-surface-glass: rgba(255, 255, 255, 0.85);
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-soft: #e2e8f0;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --danger: #ef4444;
+            --canvas-bg: #ffffff;
+            --canvas-dots: #e2e8f0;
+            --shadow-sm: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+            --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            --shadow-float: 0 20px 25px -5px rgb(0 0 0 / 0.15);
+        }
+
+        [data-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-surface: #1e293b;
+            --bg-surface-glass: rgba(30, 41, 59, 0.85);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-soft: #334155;
+            --primary: #818cf8;
+            --primary-hover: #6366f1;
+            --canvas-bg: #0f172a;
+            --canvas-dots: #1e293b;
+            --shadow-sm: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+            --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+            --shadow-float: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+        }
+
+        /* --- GLOBAL --- */
+        html, body {
+            margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-body); color: var(--text-main);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 10px; }
+
+        /* --- LAYOUT --- */
+        .app-wrapper { display: flex; flex-direction: column; height: 100vh; width: 100vw; padding: 16px; box-sizing: border-box; gap: 16px; }
+
+        /* Header */
+        header {
+            background: var(--bg-surface-glass); backdrop-filter: blur(12px); border-radius: 24px; padding: 12px 24px;
+            display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-sm); border: 1px solid var(--border-soft); flex: none; gap: 16px;
+        }
+        h1 { margin: 0; font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #6366f1, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; white-space: nowrap; }
+        .header-controls { display: flex; gap: 10px; flex: 1; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+        
+        /* Suche */
+        .search-bar { position: relative; max-width: 320px; width: 100%; flex-shrink: 1; }
+        .search-bar input { 
+            width: 100%; padding: 10px 16px 10px 42px; border-radius: 100px; border: 1px solid var(--border-soft); 
+            background: var(--bg-body); color: var(--text-main); font-size: 0.95rem; outline: none; transition: all 0.2s; box-sizing: border-box;
+        }
+        .search-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        .search-bar::before { 
+            content: ""; position: absolute; left: 14px; top: 50%; transform: translateY(-50%); 
+            width: 18px; height: 18px; opacity: 0.4;
+            background-image: url('data:image/svg+xml;utf8,<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>');
+            background-size: cover; pointer-events: none;
+        }
+
+        /* Sprach-Dropdown */
+        .lang-select {
+            appearance: none; background: var(--bg-body); border: 1px solid var(--border-soft); border-radius: 100px;
+            padding: 8px 32px 8px 16px; font-size: 0.9rem; color: var(--text-main); cursor: pointer; font-weight: 600;
+            width: auto; min-width: 80px; flex: none; 
+            background-image: url('data:image/svg+xml;utf8,<svg fill="gray" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+            background-repeat: no-repeat; background-position-x: calc(100% - 8px); background-position-y: center;
+        }
+        .lang-select:focus { outline: none; border-color: var(--primary); }
+
+        /* Buttons */
+        button { font-family: inherit; font-size: 0.9rem; font-weight: 600; border-radius: 12px; cursor: pointer; transition: all 0.2s; padding: 10px 16px; border: none; flex: none; }
+        .btn-main { background-color: var(--primary); color: #ffffff; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3); }
+        .btn-main:hover { background-color: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(99, 102, 241, 0.4); }
+        .btn-danger { background-color: transparent; color: var(--danger); border: 1px solid var(--danger); }
+        .btn-danger:hover { background-color: var(--danger); color: #fff; }
+        .btn-secondary { background-color: var(--bg-body); color: var(--text-main); border: 1px solid var(--border-soft); }
+        .btn-secondary:hover { background-color: var(--border-soft); }
+        .btn-icon { padding: 10px; border-radius: 50%; background: var(--bg-body); border: 1px solid var(--border-soft); color: var(--text-main); display: flex; align-items: center; justify-content: center; }
+        .btn-icon:hover { background: var(--border-soft); }
+
+        /* Ko-Fi Button */
+        .btn-kofi {
+            background-color: #FF5E5B; color: #ffffff; text-decoration: none; padding: 10px 16px; border-radius: 12px;
+            font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 6px; flex: none; transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(255, 94, 91, 0.3); font-family: inherit;
+        }
+        .btn-kofi:hover { background-color: #FF3B38; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(255, 94, 91, 0.4); color: #ffffff; }
+
+        .main-content { display: flex; flex: 1; width: 100%; gap: 16px; overflow: hidden; position: relative; }
+
+        /* --- SEITENLEISTEN --- */
+        .sidebar { 
+            width: 350px; background-color: var(--bg-surface-glass); backdrop-filter: blur(12px);
+            padding: 24px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; 
+            border-radius: 24px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-sm); z-index: 10;
+        }
+        .sidebar h2 { margin-top: 0; font-size: 1.1rem; color: var(--text-main); font-weight: 800; margin-bottom: 20px; }
+        .stat-placeholder { color: var(--text-muted); text-align: center; margin-top: 40px; line-height: 1.6; background: var(--bg-body); padding: 24px; border-radius: 12px; border: 1px dashed var(--border-soft); }
+        .stat-group { margin-bottom: 20px; }
+        .stat-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px; font-weight: 700; }
+        .stat-value { font-size: 1.05rem; color: var(--text-main); margin: 0; white-space: pre-wrap; line-height: 1.5; }
+        
+        .stat-image { width: 100%; max-height: 300px; object-fit: contain; border-radius: 12px; margin-bottom: 20px; background: var(--bg-body); border: 1px solid var(--border-soft); display: none; cursor: pointer; transition: transform 0.2s; }
+        .stat-image:hover { transform: scale(1.02); }
+
+        .pinned-card { background-color: var(--bg-surface); border: 1px solid var(--border-soft); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+        .color-badge { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+        .sidebar-actions { display: flex; gap: 8px; margin-top: 15px; border-top: 1px solid var(--border-soft); padding-top: 15px; flex-wrap: wrap; }
+        .sidebar-actions button { flex: 1; padding: 8px 10px; font-size: 0.85rem; }
+        .btn-unpin { background: transparent; border: none; color: var(--text-muted); font-size: 0.8rem; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+        .btn-unpin:hover { background: #fee2e2; color: var(--danger); }
+
+        /* --- NETZWERK KANVAS --- */
+        #mynetwork { 
+            flex: 1; height: 100%; background-color: var(--canvas-bg); border-radius: 24px; box-shadow: inset 0 0 20px rgba(0,0,0,0.02); 
+            border: 1px solid var(--border-soft); position: relative; overflow: hidden;
+            background-image: radial-gradient(var(--canvas-dots) 2px, transparent 2px); background-size: 30px 30px;
+        }
+
+        /* Wir verstecken das verbuggte Original-Menü komplett - keine Ausnahmen! */
+        .vis-network .vis-manipulation,
+        .vis-network .vis-edit-mode,
+        .vis-network .vis-close,
+        .vis-network .vis-button { 
+            display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; 
+        } 
+
+        /* --- EIGENE FLOATING ACTION TOOLBAR --- */
+        .custom-toolbar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--bg-surface-glass); backdrop-filter: blur(12px); padding: 10px 20px;
+            border-radius: 100px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-float);
+            display: flex; gap: 12px; align-items: center; z-index: 100;
+        }
+        .custom-toolbar button { padding: 10px 20px; border-radius: 100px; font-size: 0.95rem; }
+        .hint-text { font-weight: 700; color: var(--text-main); margin-right: 10px; }
+
+        /* --- MODALS --- */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); justify-content: center; align-items: center; }
+        .modal-content { background-color: var(--bg-surface); padding: 32px; border-radius: 24px; width: 450px; max-width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5); border: 1px solid var(--border-soft); }
+        .modal-content h3 { margin-top: 0; margin-bottom: 20px; font-weight: 800; font-size: 1.4rem; color: var(--text-main); }
+        .modal-content label { display: block; margin-bottom: 8px; font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-top: 20px; }
+        
+        input[type="text"], input[type="number"], textarea, select, input[type="file"] { 
+            width: 100%; padding: 12px; background-color: var(--bg-body); border: 1px solid var(--border-soft); color: var(--text-main); border-radius: 10px; box-sizing: border-box; font-family: inherit; font-size: 15px; 
+        }
+        input[type="text"]:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); }
+        textarea { height: 90px; resize: vertical; }
+        input[type="range"] { width: 100%; margin-top: 5px; }
+
+        .color-selector { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+        .color-btn { width: 32px; height: 32px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; transition: transform 0.2s;}
+        .color-btn.active { border-color: var(--text-main); transform: scale(1.1); box-shadow: 0 0 0 2px var(--bg-surface) inset; }
+
+        .avatar-builder { background-color: var(--bg-body); border: 1px solid var(--border-soft); padding: 16px; border-radius: 12px; margin-top: 8px; display: none; }
+        .avatar-row { display: flex; gap: 12px; margin-bottom: 12px; }
+        .avatar-col { flex: 1; }
+        input[type="color"] { height: 42px; padding: 2px; }
+        .sync-hint { display: block; font-size: 0.75rem; color: var(--primary); margin-top: 8px; font-style: italic; }
+
+        .modal-buttons { display: flex; justify-content: flex-end; gap: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-soft); }
+
+        /* Lightbox */
+        #lightbox { display: none; position: fixed; z-index: 3000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; backdrop-filter: blur(5px); cursor: pointer; }
+        #lightbox img { max-width: 90%; max-height: 90%; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); cursor: default; }
+        #lightbox-close { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; font-weight: bold; cursor: pointer; }
+
+        /* --- MOBILE --- */
+        @media (max-width: 950px) {
+            html, body { overflow: auto; }
+            .app-wrapper { height: auto; display: block; }
+            .main-content { flex-direction: column; height: auto; display: flex;}
+            header { flex-direction: column; text-align: center; }
+            .header-controls { width: 100%; justify-content: center; }
+            .search-bar { max-width: 100%; }
+            #mynetwork { flex: none; height: 60vh; border-radius: 16px; margin-bottom: 16px; }
+            .sidebar { width: 100%; margin-bottom: 16px; }
+            #statSidebar { order: 2; }
+            #leftSidebar { order: 3; }
+            .custom-toolbar { bottom: auto; top: 20px; width: 90%; justify-content: center; flex-wrap: wrap;}
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-wrapper">
+        <header>
+            <h1 data-i18n="appTitle">✨ RelationMapper</h1>
+            <div class="header-controls">
+                <div class="search-bar"><input type="text" id="searchBar" data-i18n-ph="searchPlaceholder" placeholder="Search..." onkeyup="searchNode()"></div>
+                
+                <select id="langSelect" class="lang-select" onchange="changeLanguage(this.value)">
+                    <option value="en">🇬🇧 EN</option>
+                    <option value="de">🇩🇪 DE</option>
+                    <option value="es">🇪🇸 ES</option>
+                </select>
+
+                <a href="https://ko-fi.com/paweepro" target="_blank" rel="noopener noreferrer" class="btn-kofi" title="Ko-fi">
+                    ☕ <span data-i18n="btnKofi">Buy me a coffee</span>
+                </a>
+
+                <button class="btn-icon" onclick="toggleTheme()" title="Dark/Light Mode">🌓</button>
+                <button class="btn-icon" onclick="exportToImage()" title="PNG">📸</button>
+                <button class="btn-secondary" onclick="exportReadonlyHtml()" data-i18n="btnExport">Export</button>
+                <button class="btn-danger" onclick="clearData()" data-i18n="btnReset">Reset</button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div id="leftSidebar" class="sidebar">
+                <h2 data-i18n="pinnedTitle">📌 Pinned Items</h2>
+                <div id="pinnedContainer">
+                    <div class="stat-placeholder fade-in" data-i18n="noPinned"><span>🪧</span>No pinned items yet.</div>
+                </div>
+            </div>
+
+            <div class="custom-toolbar" id="toolbarMain">
+                <button class="btn-main" onclick="startAddNode()" data-i18n="newPerson">✨ New Person</button>
+                <button class="btn-secondary" style="background:var(--bg-surface); border-color:var(--primary); color:var(--primary);" onclick="startAddEdge()" data-i18n="drawConnection">🔗 Draw Connection</button>
+            </div>
+            
+            <div class="custom-toolbar" id="toolbarCancel" style="display: none; background: #fee2e2; border-color: var(--danger);">
+                <span class="hint-text" id="actionHint" style="color: var(--danger);">...</span>
+                <button class="btn-danger" onclick="cancelAction()" data-i18n="cancel">Cancel</button>
+            </div>
+
+            <div id="mynetwork"></div>
+            
+            <div id="statSidebar" class="sidebar">
+                <h2 data-i18n="currentSelection">🔎 Current Selection</h2>
+                <div id="sidebarPlaceholder" class="stat-placeholder fade-in" data-i18n="noSelection">
+                    <span>👋</span>Click on the map to see details.
+                </div>
+                <div id="sidebarContent" style="display: none;" class="fade-in">
+                    <img id="statImage" class="stat-image" src="" alt="Detail" onclick="openLightbox(this.src)">
+                    <div class="stat-group">
+                        <p class="stat-label" id="typeLabel" data-i18n="typeProfile">Profile</p>
+                        <p class="stat-value" id="statName" style="font-weight: 800; font-size: 1.3rem;"></p>
+                    </div>
+                    <div class="stat-group" id="descriptionGroup">
+                        <p class="stat-label" data-i18n="modalNotes">Notes</p>
+                        <p class="stat-value" id="statDescription"></p>
+                    </div>
+                    
+                    <div class="sidebar-actions">
+                        <button class="btn-main" onclick="pinCurrentItem()" data-i18n="btnPin">📌 Pin</button>
+                        <button class="btn-secondary" id="btnEdit" onclick="editSelection()" data-i18n="btnEdit">✏️ Edit</button>
+                        <button class="btn-danger" id="btnDelete" onclick="deleteSelection()" data-i18n="btnDelete">🗑️ Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="lightbox" onclick="closeLightbox(event)">
+        <span id="lightbox-close">&times;</span>
+        <img id="lightbox-img" src="" onclick="event.stopPropagation()">
+    </div>
+
+    <div id="nodeModal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="modalPersonTitle">Edit Person</h3>
+            <label data-i18n="modalName">Name</label><input type="text" id="nodeName">
+            
+            <label data-i18n="modalSize">Size on Map</label>
+            <input type="range" id="nodeSize" min="20" max="80" value="40">
+            
+            <label data-i18n="modalCategory">Category Color (Border & Shirt)</label>
+            <div class="color-selector" id="colorSelector">
+                <div class="color-btn active" style="background:#64748b;" data-color="#64748b" onclick="selectColor(this)"></div>
+                <div class="color-btn" style="background:#ef4444;" data-color="#ef4444" onclick="selectColor(this)"></div>
+                <div class="color-btn" style="background:#f59e0b;" data-color="#f59e0b" onclick="selectColor(this)"></div>
+                <div class="color-btn" style="background:#10b981;" data-color="#10b981" onclick="selectColor(this)"></div>
+                <div class="color-btn" style="background:#3b82f6;" data-color="#3b82f6" onclick="selectColor(this)"></div>
+                <div class="color-btn" style="background:#8b5cf6;" data-color="#8b5cf6" onclick="selectColor(this)"></div>
+                <div class="color-btn" style="background:#ec4899;" data-color="#ec4899" onclick="selectColor(this)"></div>
+            </div>
+            <input type="hidden" id="nodeColor" value="#64748b">
+            
+            <label data-i18n="modalAppearance">Appearance</label>
+            <select id="iconType" onchange="toggleAvatarBuilder()">
+                <option value="dot" data-i18n="optDot">Colored Dot with Name</option>
+                <option value="avatar" data-i18n="optAvatar">Avatar 3.0 (Detailed)</option>
+            </select>
+
+            <div id="avatarBuilder" class="avatar-builder">
+                <div class="avatar-row">
+                    <div class="avatar-col"><label data-i18n="modalStyle">Face Style</label><select id="avGender"><option value="masculine" data-i18n="optMasculine">Neutral / Masculine</option><option value="feminine" data-i18n="optFeminine">Feminine</option></select></div>
+                    <div class="avatar-col"><label data-i18n="modalSkin">Skin Tone</label><input type="color" id="avSkin" value="#ffdbac"></div>
+                </div>
+                <div class="avatar-row">
+                    <div class="avatar-col"><label data-i18n="modalHair">Hairstyle</label><select id="avHair"><option value="short" data-i18n="optShort">Short</option><option value="long" data-i18n="optLong">Long</option><option value="bob" data-i18n="optBob">Bob</option><option value="curly" data-i18n="optCurly">Curly</option><option value="spiky" data-i18n="optSpiky">Spiky</option><option value="bald" data-i18n="optBald">Bald</option></select></div>
+                    <div class="avatar-col"><label data-i18n="modalHairColor">Hair Color</label><input type="color" id="avHairColor" value="#4a2c11"></div>
+                </div>
+                <div class="avatar-row">
+                    <div class="avatar-col"><label data-i18n="modalExpression">Expression</label><select id="avExpression"><option value="smile" data-i18n="optSmile">Smile</option><option value="laugh" data-i18n="optLaugh">Laugh</option><option value="neutral" data-i18n="optNeutral">Neutral</option></select></div>
+                    <div class="avatar-col"><label data-i18n="modalAccessory">Accessory</label><select id="avAccessory"><option value="none" data-i18n="optNone">None</option><option value="glasses" data-i18n="optGlasses">Reading Glasses</option><option value="sunglasses" data-i18n="optSunglasses">Sunglasses</option></select></div>
+                </div>
+                <span class="sync-hint" data-i18n="modalSyncHint">💡 Clothing and background automatically match your category color!</span>
+            </div>
+            
+            <label data-i18n="modalImage">Profile Image (Max. 3 MB)</label>
+            <input type="file" id="nodeDetailImage" accept="image/*">
+            <label style="display:flex; align-items:center; font-weight:normal; font-size:0.85rem; margin-top:8px;">
+                <input type="checkbox" id="removeDetailImage" style="margin-right:8px; width:auto; height:auto;"> <span data-i18n="modalRemoveImg">Remove current image</span>
+            </label>
+
+            <label data-i18n="modalNotes">Notes</label><textarea id="nodeDescription"></textarea>
+            
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="cancelNode()" data-i18n="cancel">Cancel</button>
+                <button class="btn-main" onclick="saveNode()" data-i18n="modalSave">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edgeModal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="modalEdgeTitle">Define Connection</h3>
+            <label data-i18n="modalDesc">Description (Optional)</label><input type="text" id="edgeLabel">
+            
+            <label data-i18n="modalWidth">Line Thickness</label>
+            <input type="range" id="edgeWidth" min="1" max="10" value="3">
+
+            <label data-i18n="modalLineStyle">Line Style</label>
+            <select id="edgeStyle">
+                <option value="solid" data-i18n="optSolid">Solid</option>
+                <option value="dashed" data-i18n="optDashed">Dashed</option>
+                <option value="arrow" data-i18n="optArrow">With Arrow</option>
+            </select>
+
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="cancelEdge()" data-i18n="cancel">Cancel</button>
+                <button class="btn-main" onclick="saveEdge()" data-i18n="modalSave">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- TRANSLATION DICTIONARY ---
+        const translations = {
+            en: {
+                appTitle: "✨ RelationMapper", searchPlaceholder: "Search...", btnExport: "Export", btnReset: "Reset", btnKofi: "Buy me a coffee",
+                pinnedTitle: "📌 Pinned Items", noPinned: "<span>🪧</span>No pinned items yet.",
+                currentSelection: "🔎 Current Selection", noSelection: "<span>👋</span>Click on the map to see details.",
+                btnPin: "📌 Pin", btnEdit: "✏️ Edit", btnDelete: "🗑️ Delete", btnRemove: "Remove",
+                typeProfile: "Profile", typeConnection: "Connection", unnamed: "Unnamed", noNotes: "No notes.", notDefined: "Not defined",
+                newPerson: "✨ New Person", drawConnection: "🔗 Draw Connection", cancel: "Cancel",
+                hintAddNode: "Click on an empty space on the map...", hintAddEdge: "Drag a line from one person to another...",
+                modalPersonTitle: "Edit Person", modalName: "Name", modalSize: "Size on Map", modalCategory: "Category Color (Border & Shirt)",
+                modalAppearance: "Appearance", optDot: "Colored Dot with Name", optAvatar: "Avatar 3.0 (Detailed)",
+                modalStyle: "Face Style", optMasculine: "Neutral / Masculine", optFeminine: "Feminine",
+                modalSkin: "Skin Tone", modalHair: "Hairstyle", optShort: "Short", optLong: "Long", optBob: "Bob", optCurly: "Curly", optSpiky: "Spiky", optBald: "Bald",
+                modalHairColor: "Hair Color", modalExpression: "Expression", optSmile: "Smile", optLaugh: "Laugh", optNeutral: "Neutral",
+                modalAccessory: "Accessory", optNone: "None", optGlasses: "Reading Glasses", optSunglasses: "Sunglasses",
+                modalSyncHint: "💡 Clothing and background automatically match your category color!",
+                modalImage: "Profile Image (Max. 3 MB)", modalRemoveImg: "Remove current image", modalNotes: "Notes", modalSave: "Save",
+                modalEdgeTitle: "Define Connection", modalDesc: "Description (Optional)", modalWidth: "Line Thickness",
+                modalLineStyle: "Line Style", optSolid: "Solid", optDashed: "Dashed", optArrow: "With Arrow",
+                confirmDeleteText: "Do you really want to delete this item?", confirmResetText: "Do you really want to permanently delete ALL data?", imgTooBig: "Image too large! Max. 3 MB."
+            },
+            de: {
+                appTitle: "✨ RelationMapper", searchPlaceholder: "Suchen...", btnExport: "Export", btnReset: "Reset", btnKofi: "Kauf mir einen Kaffee",
+                pinnedTitle: "📌 Gepinnte Personen", noPinned: "<span>🪧</span>Noch keine Einträge gepinnt.",
+                currentSelection: "🔎 Aktuelle Auswahl", noSelection: "<span>👋</span>Klicke auf die Map für Details.",
+                btnPin: "📌 Anpinnen", btnEdit: "✏️ Bearbeiten", btnDelete: "🗑️ Löschen", btnRemove: "Entfernen",
+                typeProfile: "Profil", typeConnection: "Verbindung", unnamed: "Unbenannt", noNotes: "Keine Notizen.", notDefined: "Nicht definiert",
+                newPerson: "✨ Neue Person", drawConnection: "🔗 Verbindung ziehen", cancel: "Abbrechen",
+                hintAddNode: "Klicke auf eine freie Fläche der Map...", hintAddEdge: "Ziehe eine Linie von Person zu Person...",
+                modalPersonTitle: "Person bearbeiten", modalName: "Name", modalSize: "Größe auf Map", modalCategory: "Kategoriefarbe (Rahmen & Shirt)",
+                modalAppearance: "Erscheinungsbild", optDot: "Farbpunkt mit Name", optAvatar: "Avatar 3.0 (Detailreich)",
+                modalStyle: "Gesichtsstil", optMasculine: "Neutral / Maskulin", optFeminine: "Feminin",
+                modalSkin: "Hautton", modalHair: "Frisur", optShort: "Kurz", optLong: "Lang", optBob: "Bob-Schnitt", optCurly: "Locken", optSpiky: "Wuschelig", optBald: "Glatze",
+                modalHairColor: "Haarfarbe", modalExpression: "Mimik", optSmile: "Lächeln", optLaugh: "Lachen", optNeutral: "Neutral",
+                modalAccessory: "Accessoire", optNone: "Keines", optGlasses: "Lesebrille", optSunglasses: "Sonnenbrille",
+                modalSyncHint: "💡 Kleidung und Hintergrund passen sich automatisch der Kategoriefarbe an!",
+                modalImage: "Profilbild (Max. 3 MB)", modalRemoveImg: "Bisheriges Bild entfernen", modalNotes: "Notizen", modalSave: "Speichern",
+                modalEdgeTitle: "Beziehung definieren", modalDesc: "Beschreibung (Optional)", modalWidth: "Linien-Dicke",
+                modalLineStyle: "Linienstil", optSolid: "Durchgehend", optDashed: "Gestrichelt", optArrow: "Mit Pfeil",
+                confirmDeleteText: "Diesen Eintrag wirklich löschen?", confirmResetText: "Wirklich ALLE Daten dauerhaft löschen?", imgTooBig: "Bild zu groß! Max. 3 MB."
+            },
+            es: {
+                appTitle: "✨ RelationMapper", searchPlaceholder: "Buscar...", btnExport: "Exportar", btnReset: "Reiniciar", btnKofi: "Cómprame un café",
+                pinnedTitle: "📌 Fijados", noPinned: "<span>🪧</span>No hay elementos fijados.",
+                currentSelection: "🔎 Selección Actual", noSelection: "<span>👋</span>Haz clic en el mapa para ver detalles.",
+                btnPin: "📌 Fijar", btnEdit: "✏️ Editar", btnDelete: "🗑️ Borrar", btnRemove: "Quitar",
+                typeProfile: "Perfil", typeConnection: "Conexión", unnamed: "Sin nombre", noNotes: "Sin notas.", notDefined: "No definido",
+                newPerson: "✨ Nueva Persona", drawConnection: "🔗 Dibujar Conexión", cancel: "Cancelar",
+                hintAddNode: "Haz clic en un espacio vacío del mapa...", hintAddEdge: "Arrastra una línea de persona a persona...",
+                modalPersonTitle: "Editar Persona", modalName: "Nombre", modalSize: "Tamaño", modalCategory: "Color (Borde y Ropa)",
+                modalAppearance: "Apariencia", optDot: "Punto con Nombre", optAvatar: "Avatar 3.0",
+                modalStyle: "Estilo", optMasculine: "Neutral / Masculino", optFeminine: "Femenino",
+                modalSkin: "Tono de Piel", modalHair: "Peinado", optShort: "Corto", optLong: "Largo", optBob: "Bob", optCurly: "Rizado", optSpiky: "Puntiagudo", optBald: "Calvo",
+                modalHairColor: "Color de Pelo", modalExpression: "Expresión", optSmile: "Sonreír", optLaugh: "Reír", optNeutral: "Neutral",
+                modalAccessory: "Accesorio", optNone: "Ninguno", optGlasses: "Gafas de Lectura", optSunglasses: "Gafas de Sol",
+                modalSyncHint: "💡 ¡La ropa y el fondo coinciden con tu color de categoría!",
+                modalImage: "Imagen (Máx. 3 MB)", modalRemoveImg: "Quitar imagen actual", modalNotes: "Notas", modalSave: "Guardar",
+                modalEdgeTitle: "Definir Conexión", modalDesc: "Descripción (Opcional)", modalWidth: "Grosor",
+                modalLineStyle: "Estilo de Línea", optSolid: "Sólido", optDashed: "Discontinuo", optArrow: "Con Flecha",
+                confirmDeleteText: "¿Eliminar realmente este elemento?", confirmResetText: "¿Eliminar TODOS los datos permanentemente?", imgTooBig: "¡Imagen demasiado grande! Máx. 3 MB."
+            }
+        };
+
+        let currentLang = localStorage.getItem('relationMapLang') || 'en';
+        
+        function t(key) { return translations[currentLang][key] || key; }
+        
+        function updateUI() {
+            document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = t(el.getAttribute('data-i18n')); });
+            document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.getAttribute('data-i18n-ph')); });
+            if (currentSelectedData) triggerClick(currentSelectedData.id, currentSelectedData.type); else network.emit("click", { nodes: [], edges: [] });
+            renderPinnedList();
+        }
+
+        function changeLanguage(lang) {
+            currentLang = lang; localStorage.setItem('relationMapLang', lang); updateUI();
+        }
+
+        // --- GLOBAL VARS ---
+        let isReadOnly = false;
+        let staticNodes = null; let staticEdges = null; let staticPinned = null;
+        let nodes = new vis.DataSet([]); let edges = new vis.DataSet([]); let pinnedItems = [];
+        let currentSelectedData = null; let editData = null; let editCallback = null;
+
+        // --- THEME & LIGHTBOX ---
+        function toggleTheme() {
+            const html = document.documentElement; html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+            const isDark = html.dataset.theme === 'dark'; network.setOptions({ edges: { font: { strokeColor: isDark ? '#1e293b' : '#ffffff' } } });
+        }
+        function openLightbox(src) { if(src) { document.getElementById('lightbox-img').src = src; document.getElementById('lightbox').style.display = 'flex'; } }
+        function closeLightbox(e) { document.getElementById('lightbox').style.display = 'none'; document.getElementById('lightbox-img').src = ''; }
+        function exportToImage() { const c = document.querySelector('#mynetwork canvas'); if(c){ const l = document.createElement('a'); l.download = 'relationmapper.png'; l.href = c.toDataURL("image/png"); l.click(); } }
+
+        // --- INDEXED DB ENGINE ---
+        const dbName = "FriendMapDB"; const storeName = "mapData"; let db = null;
+        function initDB() { return new Promise((res, rej) => { const req = indexedDB.open(dbName, 1); req.onupgradeneeded = e => { if (!e.target.result.objectStoreNames.contains(storeName)) e.target.result.createObjectStore(storeName); }; req.onsuccess = e => { db = e.target.result; res(db); }; req.onerror = e => rej(e.target.error); }); }
+        function getDBData(key) { return new Promise(res => { if (!db) return res(null); const req = db.transaction([storeName], "readonly").objectStore(storeName).get(key); req.onsuccess = () => res(req.result || null); req.onerror = () => res(null); }); }
+        function saveDBData(key, dataValue) { if (isReadOnly || !db) return; db.transaction([storeName], "readwrite").objectStore(storeName).put(dataValue, key); }
+
+        // --- INIT ---
+        window.onload = () => {
+            document.getElementById('langSelect').value = currentLang;
+            updateUI();
+            
+            if (isReadOnly) {
+                document.getElementById('editorControls').style.display = 'none'; document.getElementById('toolbarMain').style.display = 'none';
+                nodes.add(staticNodes || []); edges.add(staticEdges || []); pinnedItems = staticPinned || []; renderPinnedList();
+            } else {
+                initDB().then(async () => {
+                    let dbNodes = await getDBData("nodes"); let dbEdges = await getDBData("edges"); let dbPinned = await getDBData("pinned");
+                    if (!dbNodes || dbNodes.length===0) { const o = JSON.parse(localStorage.getItem('cleanMapNodes')); if(o) dbNodes=o; }
+                    if (!dbEdges || dbEdges.length===0) { const o = JSON.parse(localStorage.getItem('cleanMapEdges')); if(o) dbEdges=o; }
+                    nodes.add(dbNodes || []); edges.add(dbEdges || []); pinnedItems = dbPinned || []; renderPinnedList();
+                    nodes.on('*', () => saveDBData("nodes", nodes.get())); edges.on('*', () => saveDBData("edges", edges.get()));
+                }).catch(console.error);
+            }
+        };
+
+        // --- VIS.JS ---
+        const container = document.getElementById('mynetwork');
+        const data = { nodes: nodes, edges: edges };
+        const options = {
+            manipulation: {
+                enabled: !isReadOnly,
+                addNode: function(data, cb) { resetToolbar(); openNodeModal(data, cb, true); },
+                addEdge: function(data, cb) { resetToolbar(); if (data.from === data.to) return cb(null); openEdgeModal(data, cb, true); }
+            },
+            nodes: { shape: 'dot', size: 40, font: { color: '#0f172a', size: 16, face: 'system-ui', bold: true, background: 'rgba(255,255,255,0.8)' }, borderWidth: 4, shadow: { enabled: true, color: 'rgba(0,0,0,0.15)', size: 15, y: 5 } },
+            edges: { width: 3, font: { color: '#475569', size: 13, align: 'top', strokeWidth: 4, strokeColor: '#ffffff' }, color: { color: '#cbd5e1', highlight: '#6366f1' }, smooth: { type: 'continuous' } },
+            interaction: { dragNodes: !isReadOnly, hover: true }, physics: false
+        };
+        const network = new vis.Network(container, data, options);
+
+        function searchNode() {
+            const term = document.getElementById('searchBar').value.toLowerCase(); if (term.length < 2) return;
+            const match = nodes.get().find(n => n.label && n.label.toLowerCase().includes(term));
+            if (match) { network.selectNodes([match.id]); network.focus(match.id, { scale: 1.2, animation: { duration: 500 } }); triggerClick(match.id, 'node'); }
+        }
+        function triggerClick(id, forceType) { 
+            if(forceType === 'edge') network.emit("click", { nodes: [], edges: [id] }); 
+            else network.emit("click", { nodes: [id], edges: [] }); 
+        }
+
+        // --- CUSTOM TOOLBAR LOGIC ---
+        function startAddNode() { network.addNodeMode(); document.getElementById('toolbarMain').style.display='none'; document.getElementById('toolbarCancel').style.display='flex'; document.getElementById('actionHint').innerText=t('hintAddNode'); }
+        function startAddEdge() { network.addEdgeMode(); document.getElementById('toolbarMain').style.display='none'; document.getElementById('toolbarCancel').style.display='flex'; document.getElementById('actionHint').innerText=t('hintAddEdge'); }
+        function cancelAction() { network.disableEditMode(); resetToolbar(); }
+        function resetToolbar() { if(isReadOnly) return; document.getElementById('toolbarMain').style.display='flex'; document.getElementById('toolbarCancel').style.display='none'; }
+
+        // --- INTERAKTION ---
+        network.on("click", function(params) {
+            const content = document.getElementById('sidebarContent'); const typeLabel = document.getElementById('typeLabel');
+            const statName = document.getElementById('statName'); const statDesc = document.getElementById('statDescription'); const statImage = document.getElementById('statImage');
+
+            if (params.nodes.length > 0) {
+                const node = nodes.get(params.nodes[0]); currentSelectedData = { type: 'node', id: node.id };
+                document.getElementById('sidebarPlaceholder').style.display = 'none'; content.style.display = 'block'; document.getElementById('descriptionGroup').style.display = 'block';
+                let c = (node.color && node.color.border) ? node.color.border : '#64748b';
+                typeLabel.innerText = t('typeProfile'); statName.innerHTML = `<span class="color-badge" style="background:${c};"></span>${node.label || t('unnamed')}`;
+                statDesc.innerText = node.title || t('noNotes');
+                if (node.detailImage) { statImage.src = node.detailImage; statImage.style.display = 'block'; } else statImage.style.display = 'none';
+                document.getElementById('btnEdit').style.display = isReadOnly ? 'none' : 'block'; document.getElementById('btnDelete').style.display = isReadOnly ? 'none' : 'block';
+            } else if (params.edges.length > 0) {
+                const edge = edges.get(params.edges[0]); currentSelectedData = { type: 'edge', id: edge.id };
+                document.getElementById('sidebarPlaceholder').style.display = 'none'; content.style.display = 'block'; document.getElementById('descriptionGroup').style.display = 'block'; statImage.style.display = 'none';
+                typeLabel.innerText = t('typeConnection'); statName.innerText = `${nodes.get(edge.from)?.label || '?'} & ${nodes.get(edge.to)?.label || '?'}`;
+                statDesc.innerText = edge.label || t('notDefined');
+                document.getElementById('btnEdit').style.display = isReadOnly ? 'none' : 'block'; document.getElementById('btnDelete').style.display = isReadOnly ? 'none' : 'block';
+            } else { currentSelectedData = null; document.getElementById('sidebarPlaceholder').style.display = 'block'; document.getElementById('sidebarPlaceholder').innerHTML = t('noSelection'); content.style.display = 'none'; }
+        });
+
+        function editSelection() {
+            if(!currentSelectedData) return;
+            if(currentSelectedData.type === 'node') openNodeModal(nodes.get(currentSelectedData.id), function(d){ if(d) nodes.update(d); }, false);
+            else openEdgeModal(edges.get(currentSelectedData.id), function(d){ if(d) edges.update(d); }, false);
+        }
+        function deleteSelection() {
+            if(!currentSelectedData) return;
+            if(confirm(t('confirmDeleteText'))) {
+                if(currentSelectedData.type === 'node') nodes.remove(currentSelectedData.id); else edges.remove(currentSelectedData.id);
+                unpinItemByData(currentSelectedData.id, currentSelectedData.type); network.unselectAll(); currentSelectedData = null;
+                document.getElementById('sidebarPlaceholder').style.display = 'block'; document.getElementById('sidebarContent').style.display = 'none';
+            }
+        }
+
+        // --- ANPINNEN ---
+        function pinCurrentItem() { if (!currentSelectedData || pinnedItems.some(i => i.type === currentSelectedData.type && i.id === currentSelectedData.id)) return; pinnedItems.push({ type: currentSelectedData.type, id: currentSelectedData.id }); saveDBData("pinned", pinnedItems); renderPinnedList(); }
+        function unpinItem(i) { pinnedItems.splice(i, 1); saveDBData("pinned", pinnedItems); renderPinnedList(); }
+        function unpinItemByData(id, typ) { pinnedItems = pinnedItems.filter(i => !(i.id === id && i.type === typ)); saveDBData("pinned", pinnedItems); renderPinnedList(); }
+
+        function renderPinnedList() {
+            const container = document.getElementById('pinnedContainer'); container.innerHTML = '';
+            if (pinnedItems.length === 0) { container.innerHTML = `<div class="stat-placeholder fade-in">${t('noPinned')}</div>`; return; }
+            pinnedItems.forEach((item, index) => {
+                let title = '', text = '', label = '', img = '';
+                if (item.type === 'node') {
+                    const n = nodes.get(item.id); if (!n) return;
+                    let c = (n.color && n.color.border) ? n.color.border : '#64748b'; title = `<span class="color-badge" style="background:${c};"></span>${n.label || t('unnamed')}`;
+                    text = n.title || t('noNotes'); label = t('typeProfile'); if (n.detailImage) img = `<img src="${n.detailImage}" style="width:100%; border-radius:8px; margin-bottom:12px; object-fit:contain; max-height:200px;">`;
+                } else {
+                    const e = edges.get(item.id); if (!e) return;
+                    title = `${nodes.get(e.from)?.label || '?'} & ${nodes.get(e.to)?.label || '?'}`; text = e.label || t('notDefined'); label = t('typeConnection');
+                }
+                const card = document.createElement('div'); card.className = 'pinned-card fade-in';
+                card.innerHTML = `<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;"><span class="stat-label" style="margin: 0;">${label}</span><button class="btn-unpin" onclick="unpinItem(${index})">${t('btnRemove')}</button></div>${img}<p style="margin: 0 0 6px 0; font-weight: 800; font-size: 1.05rem;">${title}</p><p style="margin: 0; font-size: 0.9rem; color: var(--text-muted);">${text}</p>`;
+                container.appendChild(card);
+            });
+        }
+
+        // --- AVATAR 3.0 ---
+        function selectColor(el) { document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); document.getElementById('nodeColor').value = el.getAttribute('data-color'); }
+        function toggleAvatarBuilder() { document.getElementById('avatarBuilder').style.display = (document.getElementById('iconType').value === 'avatar') ? 'block' : 'none'; }
+
+        function generateAvatarSVG(skin, hairColor, style, gender, expression, accessory, bgColor) {
+            let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><defs><clipPath id="c"><circle cx="50" cy="50" r="46" /></clipPath></defs>`;
+            svg += `<circle cx="50" cy="50" r="46" fill="${bgColor}" opacity="0.15" stroke="${bgColor}" stroke-width="3" /><g clip-path="url(#c)">`;
+            if (style === 'long') { svg += `<path d="M 22 45 C 18 20, 82 20, 78 45 L 82 100 L 18 100 Z" fill="${hairColor}" />`; }
+            else if (style === 'bob') { svg += `<path d="M 20 40 C 15 20, 85 20, 80 40 L 85 75 C 85 85, 15 85, 15 75 Z" fill="${hairColor}" />`; }
+            else if (style === 'curly') { svg += `<circle cx="28" cy="35" r="16" fill="${hairColor}"/><circle cx="72" cy="35" r="16" fill="${hairColor}"/><circle cx="22" cy="55" r="16" fill="${hairColor}"/><circle cx="78" cy="55" r="16" fill="${hairColor}"/><circle cx="30" cy="70" r="16" fill="${hairColor}"/><circle cx="70" cy="70" r="16" fill="${hairColor}"/>`; }
+            svg += `<path d="M 15 100 C 15 72, 85 72, 85 100 Z" fill="${bgColor}" /><rect x="42" y="60" width="16" height="15" fill="${skin}" /><rect x="42" y="60" width="16" height="6" fill="#000000" opacity="0.15" /><circle cx="50" cy="46" r="22" fill="${skin}" />`;
+            if (gender === 'feminine') { svg += `<circle cx="36" cy="52" r="4" fill="#ff8a8a" opacity="0.5" /><circle cx="64" cy="52" r="4" fill="#ff8a8a" opacity="0.5" />`; }
+            
+            if (expression === 'laugh') { svg += `<path d="M 34 45 Q 38 41 42 45" stroke="#1e293b" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 58 45 Q 62 41 66 45" stroke="#1e293b" stroke-width="2.5" fill="none" stroke-linecap="round"/>`; } 
+            else { svg += `<circle cx="38" cy="44" r="3" fill="#1e293b" /><circle cx="62" cy="44" r="3" fill="#1e293b" />`; if (gender === 'feminine') { svg += `<path d="M 35 43 L 33 40" stroke="#1e293b" stroke-width="1.5" stroke-linecap="round"/><path d="M 65 43 L 67 40" stroke="#1e293b" stroke-width="1.5" stroke-linecap="round"/>`; } }
+
+            if (expression === 'smile') { svg += `<path d="M 43 55 Q 50 62 57 55" stroke="${gender==='feminine'?'#ec4899':'#1e293b'}" stroke-width="${gender==='feminine'?3:2.5}" fill="none" stroke-linecap="round" />`; } 
+            else if (expression === 'laugh') { svg += `<path d="M 42 54 Q 50 65 58 54 Z" fill="${gender==='feminine'?'#ec4899':'#1e293b'}" /><path d="M 46 59 Q 50 63 54 59 Z" fill="#ff8a8a" />`; } 
+            else { svg += `<path d="M 45 56 L 55 56" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" />`; }
+
+            if (style === 'short') { svg += `<path d="M 28 45 A 22 22 0 0 1 72 45 C 68 30, 32 30, 28 45 Z" fill="${hairColor}" /><path d="M 28 40 L 25 50 L 32 40 Z" fill="${hairColor}" /><path d="M 72 40 L 75 50 L 68 40 Z" fill="${hairColor}" />`; } 
+            else if (style === 'spiky') { svg += `<path d="M 27 45 A 23 23 0 0 1 73 45 L 65 20 L 55 30 L 50 15 L 45 30 L 35 20 Z" fill="${hairColor}" />`; } 
+            else if (style === 'long' || style === 'bob') { svg += `<path d="M 28 45 A 22 22 0 0 1 72 45 C 65 33, 35 33, 28 45 Z" fill="${hairColor}" /><path d="M 28 40 L 34 40 L 34 68 C 30 68, 25 60, 25 50 Z" fill="${hairColor}" /><path d="M 72 40 L 66 40 L 66 68 C 70 68, 75 60, 75 50 Z" fill="${hairColor}" />`; } 
+            else if (style === 'curly') { svg += `<circle cx="36" cy="28" r="8" fill="${hairColor}" /><circle cx="44" cy="24" r="8" fill="${hairColor}" /><circle cx="56" cy="24" r="8" fill="${hairColor}" /><circle cx="64" cy="28" r="8" fill="${hairColor}" /><circle cx="28" cy="40" r="7" fill="${hairColor}" /><circle cx="72" cy="40" r="7" fill="${hairColor}" />`; }
+
+            if (accessory === 'glasses') { svg += `<g stroke="#1e293b" stroke-width="2.5" fill="none"><rect x="30" y="38" width="16" height="12" rx="4" /><rect x="54" y="38" width="16" height="12" rx="4" /><path d="M 46 44 L 54 44" /><path d="M 26 44 L 30 44" /><path d="M 70 44 L 74 44" /></g>`; } 
+            else if (accessory === 'sunglasses') { svg += `<g stroke="#1e293b" stroke-width="2" fill="#1e293b"><rect x="30" y="38" width="17" height="12" rx="3" /><rect x="53" y="38" width="17" height="12" rx="3" /><path d="M 47 42 L 53 42" stroke-width="3" /><path d="M 26 42 L 30 42" stroke-width="3" /><path d="M 70 42 L 74 42" stroke-width="3" /><path d="M 32 40 L 40 48" stroke="#ffffff" stroke-width="2" opacity="0.3" fill="none"/><path d="M 55 40 L 63 48" stroke="#ffffff" stroke-width="2" opacity="0.3" fill="none"/></g>`; }
+            svg += `</g></svg>`; return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+        }
+
+        // --- MODAL LOGIC ---
+        function openNodeModal(data, callback, isNew) {
+            editData = data; editCallback = callback;
+            document.getElementById('nodeName').value = data.label || ''; document.getElementById('nodeDescription').value = data.title || ''; 
+            document.getElementById('nodeSize').value = data.size || 40; document.getElementById('nodeDetailImage').value = ''; document.getElementById('removeDetailImage').checked = false;
+
+            let c = (data.color && data.color.border) ? data.color.border : '#64748b'; document.getElementById('nodeColor').value = c;
+            document.querySelectorAll('.color-btn').forEach(btn => { if(btn.getAttribute('data-color') === c) selectColor(btn); });
+
+            if (data.avatarData && data.shape === 'circularImage') {
+                document.getElementById('iconType').value = 'avatar'; document.getElementById('avGender').value = data.avatarData.gender; document.getElementById('avSkin').value = data.avatarData.skin;
+                document.getElementById('avHair').value = data.avatarData.hair; document.getElementById('avHairColor').value = data.avatarData.hairColor; 
+                document.getElementById('avExpression').value = data.avatarData.expression || 'neutral'; document.getElementById('avAccessory').value = data.avatarData.accessory || 'none';
+            } else document.getElementById('iconType').value = 'dot';
+            
+            toggleAvatarBuilder(); document.getElementById('nodeModal').style.display = 'flex';
+        }
+
+        function saveNode() {
+            editData.label = document.getElementById('nodeName').value; editData.title = document.getElementById('nodeDescription').value; editData.size = parseInt(document.getElementById('nodeSize').value);
+            const c = document.getElementById('nodeColor').value;
+            editData.color = { border: c, background: '#ffffff', highlight: { border: c, background: '#f8fafc' }, hover: { border: c, background: '#f1f5f9' } };
+
+            if (document.getElementById('iconType').value === 'avatar') {
+                const g = document.getElementById('avGender').value, s = document.getElementById('avSkin').value, h = document.getElementById('avHair').value, hc = document.getElementById('avHairColor').value, exp = document.getElementById('avExpression').value, acc = document.getElementById('avAccessory').value;
+                editData.avatarData = { gender:g, skin:s, hair:h, hairColor:hc, expression:exp, accessory:acc }; editData.shape = 'circularImage'; editData.image = generateAvatarSVG(s, hc, h, g, exp, acc, c);
+            } else { editData.shape = 'dot'; delete editData.image; delete editData.avatarData; }
+
+            if (document.getElementById('removeDetailImage').checked) delete editData.detailImage;
+            const file = document.getElementById('nodeDetailImage').files[0];
+            if (file) {
+                if (file.size > 3 * 1024 * 1024) return alert(t('imgTooBig'));
+                const reader = new FileReader(); reader.onload = e => { editData.detailImage = e.target.result; finishNodeSave(); }; reader.readAsDataURL(file);
+            } else finishNodeSave();
+        }
+        function finishNodeSave() { editCallback(editData); closeNodeModal(); if (currentSelectedData && currentSelectedData.id === editData.id) triggerClick(editData.id, 'node'); renderPinnedList(); }
+        function cancelNode() { editCallback(null); closeNodeModal(); }
+        function closeNodeModal() { document.getElementById('nodeModal').style.display = 'none'; editData = null; editCallback = null; }
+
+        function openEdgeModal(data, callback, isNew) {
+            editData = data; editCallback = callback;
+            document.getElementById('edgeLabel').value = data.label || ''; document.getElementById('edgeWidth').value = data.width || 3;
+            let s = "solid"; if(data.dashes) s = "dashed"; if(data.arrows === "to") s = "arrow"; document.getElementById('edgeStyle').value = s;
+            document.getElementById('edgeModal').style.display = 'flex';
+        }
+        function saveEdge() { 
+            editData.label = document.getElementById('edgeLabel').value; editData.width = parseInt(document.getElementById('edgeWidth').value);
+            const s = document.getElementById('edgeStyle').value; editData.dashes = (s === "dashed"); editData.arrows = (s === "arrow") ? "to" : "";
+            editCallback(editData); closeEdgeModal(); triggerClick(editData.id, 'edge');
+        }
+        function cancelEdge() { editCallback(null); closeEdgeModal(); }
+        function closeEdgeModal() { document.getElementById('edgeModal').style.display = 'none'; editData = null; editCallback = null; }
+
+        // --- EXPORT & RESET ---
+        function clearData() { 
+            if(confirm(t('confirmResetText'))) { 
+                nodes.clear(); edges.clear(); pinnedItems = []; 
+                if (!isReadOnly && db) db.transaction([storeName], "readwrite").objectStore(storeName).clear(); 
+                
+                // Wir löschen auch alle alten LocalStorage-Geister
+                localStorage.removeItem('cleanMapNodes');
+                localStorage.removeItem('cleanMapEdges');
+                localStorage.removeItem('cleanMapPinned');
+
+                document.getElementById('sidebarPlaceholder').style.display = 'block'; 
+                document.getElementById('sidebarContent').style.display = 'none'; 
+                currentSelectedData = null; 
+                renderPinnedList(); 
+            } 
+        }
+        
+        function exportReadonlyHtml() {
+            const p = network.getPositions(); const nArr = nodes.get().map(n => { if (p[n.id]) { n.x = p[n.id].x; n.y = p[n.id].y; } return n; });
+            let raw = document.documentElement.outerHTML.replace('let isReadOnly = false;', 'let isReadOnly = true;')
+                .replace('let staticNodes = null;', `let staticNodes = ${JSON.stringify(nArr)};`)
+                .replace('let staticEdges = null;', `let staticEdges = ${JSON.stringify(edges.get())};`)
+                .replace('let staticPinned = null;', `let staticPinned = ${JSON.stringify(pinnedItems)};`);
+            const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([raw], { type: 'text/html' })); link.download = 'relationmapper-export.html'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
